@@ -11,7 +11,8 @@ pub fn build(b: *std.build.Builder) void {
         .optimize = optimize,
     });
 
-    const sdl_path = "d:\\zig\\SDL2-2.26.4\\";
+    const sdl_path = @embedFile("sdl_path.txt");
+
     exe.addIncludePath(sdl_path ++ "include");
     exe.addLibraryPath(sdl_path ++ "lib\\x64");
     b.installBinFile(sdl_path ++ "lib\\x64\\SDL2.dll", "SDL2.dll");
