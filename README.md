@@ -71,3 +71,8 @@ CHIP-8 Emulator written in Zig using SDL
 - [James Griffin's CHIP-8 Emulator](https://github.com/JamesGriffin/CHIP-8-Emulator)
 - [Multigesture Article](https://multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/)
 - [Cowgod's CHIP-8 Documentation](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM) 
+
+
+AlF changes and info:
+
+to get submodule(s) git submodule update --init

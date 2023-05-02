@@ -64,32 +64,32 @@ pub fn init(self: *Self) !void {
     self.sp = 0x00;
 
     // Clear display
-    for (self.graphics) |*g| {
+    for (&self.graphics) |*g| {
         g.* = 0x00;
     }
 
     // Clear stack
-    for (self.stack) |*s| {
+    for (&self.stack) |*s| {
         s.* = 0x00;
     }
 
     // Clear registers
-    for (self.registers) |*r| {
+    for (&self.registers) |*r| {
         r.* = 0x00;
     }
 
     // Clear memory
-    for (self.memory) |*v| {
+    for (&self.memory) |*v| {
         v.* = 0x00;
     }
 
     // Clear key
-    for (self.keys) |*k| {
+    for (&self.keys) |*k| {
         k.* = 0x00;
     }
 
     // Set fonts
-    for (chip8_fontset) |c, idx| {
+    for (chip8_fontset, 0..) |c, idx| {
         self.memory[idx] = c;
     }
 
@@ -108,7 +108,7 @@ pub fn cycle(self: *Self) !void {
     self.current_opcode = @intCast(u16, self.memory[self.program_counter]) << 8 | self.memory[self.program_counter + 1];
 
     if (self.current_opcode == 0x00E0) { // CLS
-        for (self.graphics) |*g| {
+        for (&self.graphics) |*g| {
             g.* = 0;
         }
         self.increment_pc();
@@ -122,6 +122,7 @@ pub fn cycle(self: *Self) !void {
         switch (first) {
             0x0 => {
                 std.debug.print("SYS INSTR!\n", .{});
+              
                 self.increment_pc();
             }, // Unimplemented system instructions
 
@@ -264,14 +265,14 @@ pub fn cycle(self: *Self) !void {
                 var registerY = self.registers[(self.current_opcode & 0x00F0) >> 4];
                 var height = self.current_opcode & 0x000F;
 
-                var y : usize = 0;
-                while(y < height) : (y += 1) {
+                var y: usize = 0;
+                while (y < height) : (y += 1) {
                     var spr = self.memory[self.index + y];
 
-                    var x : usize = 0;
-                    while(x < 8) : (x += 1) {
-                        const v : u8 = 0x80;
-                        if((spr & (v >> @intCast(u3, x))) != 0) {
+                    var x: usize = 0;
+                    while (x < 8) : (x += 1) {
+                        const v: u8 = 0x80;
+                        if ((spr & (v >> @intCast(u3, x))) != 0) {
                             var tX = (registerX + x) % 64;
                             var tY = (registerY + y) % 32;
 
@@ -279,7 +280,7 @@ pub fn cycle(self: *Self) !void {
 
                             self.graphics[idx] ^= 1;
 
-                            if(self.graphics[idx] == 0) {
+                            if (self.graphics[idx] == 0) {
                                 self.registers[0x0F] = 1;
                             }
                         }
@@ -293,12 +294,12 @@ pub fn cycle(self: *Self) !void {
                 var x = (self.current_opcode & 0x0F00) >> 8;
                 var m = self.current_opcode & 0x00FF;
 
-                if(m == 0x9E) {
-                    if(self.keys[self.registers[x]] == 1){
+                if (m == 0x9E) {
+                    if (self.keys[self.registers[x]] == 1) {
                         self.increment_pc();
                     }
-                } else if(m == 0xA1) {
-                    if(self.keys[self.registers[x]] != 1){
+                } else if (m == 0xA1) {
+                    if (self.keys[self.registers[x]] != 1) {
                         self.increment_pc();
                     }
                 }
@@ -314,22 +315,22 @@ pub fn cycle(self: *Self) !void {
                 } else if (m == 0x0A) {
                     var key_pressed = false;
 
-                    var i : usize = 0;
-                    while(i < 16) : (i += 1) {
-                        if(self.keys[i] != 0) {
+                    var i: usize = 0;
+                    while (i < 16) : (i += 1) {
+                        if (self.keys[i] != 0) {
                             self.registers[x] = @truncate(u8, i);
                             key_pressed = true;
                         }
                     }
-                    
-                    if(!key_pressed)
+
+                    if (!key_pressed)
                         return;
                 } else if (m == 0x15) {
                     self.delay_timer = self.registers[x];
                 } else if (m == 0x18) {
                     self.sound_timer = self.registers[x];
                 } else if (m == 0x1E) {
-                    self.registers[0xF] = if(self.index + self.registers[x] > 0xFFF) 1 else 0;
+                    self.registers[0xF] = if (self.index + self.registers[x] > 0xFFF) 1 else 0;
                     self.index += self.registers[x];
                 } else if (m == 0x29) {
                     self.index = self.registers[x] * 0x5;
@@ -357,8 +358,10 @@ pub fn cycle(self: *Self) !void {
             },
         }
     }
+}
 
-    if (self.delay_timer > 0) 
+pub fn update_timers(self: *Self) !void {
+    if (self.delay_timer > 0)
         self.delay_timer -= 1;
 
     if (self.sound_timer > 0) {
@@ -366,3 +369,4 @@ pub fn cycle(self: *Self) !void {
         self.sound_timer -= 1;
     }
 }
+

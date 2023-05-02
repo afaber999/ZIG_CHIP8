@@ -8,8 +8,8 @@ pub fn println(msg: []const u8) void {
 }
 
 var window: ?*sdl.SDL_Window = null;
-var renderer : ?*sdl.SDL_Renderer = null;
-var texture : ?*sdl.SDL_Texture = null;
+var renderer: ?*sdl.SDL_Renderer = null;
+var texture: ?*sdl.SDL_Texture = null;
 
 var cpu: *CPU = undefined;
 
@@ -52,7 +52,7 @@ pub fn init() void {
     // Okay let's setup some basic rendering
     renderer = sdl.SDL_CreateRenderer(window, -1, 0);
 
-    if(renderer == null) {
+    if (renderer == null) {
         var err = sdl.SDL_GetError();
         std.debug.print("{s}\n", .{err});
 
@@ -60,7 +60,7 @@ pub fn init() void {
     }
 
     texture = sdl.SDL_CreateTexture(renderer, sdl.SDL_PIXELFORMAT_RGBA8888, sdl.SDL_TEXTUREACCESS_STREAMING, 64, 32);
-    if(texture == null) {
+    if (texture == null) {
         @panic("SDL Texture Creation Failed!");
     }
 }
@@ -96,12 +96,12 @@ pub fn buildTexture(system: *CPU) void {
     var pitch: c_int = 0;
     _ = sdl.SDL_LockTexture(texture, null, @ptrCast([*c]?*anyopaque, &bytes), &pitch);
 
-    var y : usize = 0;
-    while(y < 32) : (y += 1) {
-    var x : usize = 0;
-    while(x < 64) : (x += 1) {
-        bytes.?[y * 64 + x] = if(system.graphics[y * 64 + x] == 1) 0xFFFFFFFF else 0x000000FF;
-    }
+    var y: usize = 0;
+    while (y < 32) : (y += 1) {
+        var x: usize = 0;
+        while (x < 64) : (x += 1) {
+            bytes.?[y * 64 + x] = if (system.graphics[y * 64 + x] == 1) 0xFFFFFFFF else 0x000000FF;
+        }
     }
     sdl.SDL_UnlockTexture(texture);
 }
@@ -131,28 +131,39 @@ pub fn main() !void {
 
     var keep_open = true;
     while (keep_open) {
-        try cpu.cycle();
+
+        // virtual speed
+        const DISPLAY_FREQUENCY = 60;
+        const MACHINE_FREQUENCY = 700;
+        const CYCLES_PER_LOOP = MACHINE_FREQUENCY / DISPLAY_FREQUENCY;
+
+        // run CYCLES_PER_LOOP cycles
+        for (0..CYCLES_PER_LOOP) |_| {
+            try cpu.cycle();
+        }
+        // update timers (call 60 times per second)
+        try cpu.update_timers();
 
         var e: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&e) > 0) {
             switch (e.type) {
                 sdl.SDL_QUIT => keep_open = false,
                 sdl.SDL_KEYDOWN => {
-                    if(e.key.keysym.scancode == sdl.SDL_SCANCODE_ESCAPE) {
+                    if (e.key.keysym.scancode == sdl.SDL_SCANCODE_ESCAPE) {
                         keep_open = false;
                     }
 
-                    var i : usize = 0;
-                    while(i < 16) : (i += 1) {
-                        if(e.key.keysym.scancode == keymap[i]) {
+                    var i: usize = 0;
+                    while (i < 16) : (i += 1) {
+                        if (e.key.keysym.scancode == keymap[i]) {
                             cpu.keys[i] = 1;
                         }
-                    } 
+                    }
                 },
                 sdl.SDL_KEYUP => {
-                    var i : usize = 0;
-                    while(i < 16) : (i += 1) {
-                        if(e.key.keysym.scancode == keymap[i]) {
+                    var i: usize = 0;
+                    while (i < 16) : (i += 1) {
+                        if (e.key.keysym.scancode == keymap[i]) {
                             cpu.keys[i] = 0;
                         }
                     }
@@ -164,15 +175,10 @@ pub fn main() !void {
 
         buildTexture(cpu);
 
-        var dest = sdl.SDL_Rect {
-            .x = 0,
-            .y = 0,
-            .w = 1024,
-            .h = 512
-        };
+        var dest = sdl.SDL_Rect{ .x = 0, .y = 0, .w = 1024, .h = 512 };
         _ = sdl.SDL_RenderCopy(renderer, texture, null, &dest);
         _ = sdl.SDL_RenderPresent(renderer);
 
-        std.time.sleep(12 * 1000 * 1000 * slow_factor);
+        std.time.sleep(1000 / DISPLAY_FREQUENCY * 1000 * 1000 * slow_factor);
     }
 }
