@@ -105,7 +105,19 @@ pub fn cycle(self: *Self) !void {
     if (self.program_counter > 0xFFF)
         @panic("OPcode out of range! Your program has an error!");
 
-    self.current_opcode = @intCast(u16, self.memory[self.program_counter]) << 8 | self.memory[self.program_counter + 1];
+    // little endian
+    var b1 = @intCast(u16, self.memory[self.program_counter + 0]);
+    var n2 = (b1 & 0x000F) >> 0;
+    var n3 = (b1 & 0x00F0) >> 4;
+
+    var b0 = @intCast(u16, self.memory[self.program_counter + 1]);
+    var n0 = (b0 & 0x000F) >> 0;
+    var n1 = (b0 & 0x00F0) >> 4;
+
+    self.current_opcode = b1 << 8 | b0;
+
+    const y = n1;
+    const x = n2;
 
     if (self.current_opcode == 0x00E0) { // CLS
         for (&self.graphics) |*g| {
@@ -117,12 +129,9 @@ pub fn cycle(self: *Self) !void {
         self.program_counter = self.stack[self.sp];
         self.increment_pc();
     } else {
-        var first = self.current_opcode >> 12;
-
-        switch (first) {
+        switch (n3) {
             0x0 => {
                 std.debug.print("SYS INSTR!\n", .{});
-              
                 self.increment_pc();
             }, // Unimplemented system instructions
 
@@ -137,8 +146,6 @@ pub fn cycle(self: *Self) !void {
             }, // Call NNN, stack gets pushed
 
             0x3 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-
                 if (self.registers[x] == self.current_opcode & 0x00FF) {
                     self.increment_pc();
                 }
@@ -147,8 +154,6 @@ pub fn cycle(self: *Self) !void {
             }, // Skips next instruction if Vx == kk
 
             0x4 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-
                 if (self.registers[x] != self.current_opcode & 0x00FF) {
                     self.increment_pc();
                 }
@@ -157,9 +162,6 @@ pub fn cycle(self: *Self) !void {
             }, // Skips next instruction if Vx != kk
 
             0x5 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-                var y = (self.current_opcode & 0x00F0) >> 4;
-
                 if (self.registers[x] == self.registers[y]) {
                     self.increment_pc();
                 }
@@ -167,24 +169,18 @@ pub fn cycle(self: *Self) !void {
             }, // Skip next instruction if Vx = Vy
 
             0x6 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
                 self.registers[x] = @truncate(u8, self.current_opcode & 0x00FF);
                 self.increment_pc();
             }, // Set Vx = kk
 
             0x7 => {
                 @setRuntimeSafety(false);
-                var x = (self.current_opcode & 0x0F00) >> 8;
                 self.registers[x] += @truncate(u8, self.current_opcode & 0x00FF);
                 self.increment_pc();
             }, // Set Vx = Vx + kk
 
             0x8 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-                var y = (self.current_opcode & 0x00F0) >> 4;
-                var m = (self.current_opcode & 0x000F);
-
-                switch (m) {
+                switch (n0) {
                     0 => {
                         self.registers[x] = self.registers[y];
                     },
@@ -232,9 +228,6 @@ pub fn cycle(self: *Self) !void {
             }, // ALU instructions
 
             0x9 => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-                var y = (self.current_opcode & 0x00F0) >> 4;
-
                 if (self.registers[x] != self.registers[y]) {
                     self.increment_pc();
                 }
@@ -251,7 +244,6 @@ pub fn cycle(self: *Self) !void {
             }, // JMP to V0 + NNN
 
             0xC => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
                 var kk = self.current_opcode & 0x00FF;
 
                 self.registers[x] = @truncate(u8, @bitCast(u32, cstd.rand()) & kk);
@@ -261,20 +253,21 @@ pub fn cycle(self: *Self) !void {
             0xD => {
                 self.registers[0xF] = 0;
 
-                var registerX = self.registers[(self.current_opcode & 0x0F00) >> 8];
-                var registerY = self.registers[(self.current_opcode & 0x00F0) >> 4];
-                var height = self.current_opcode & 0x000F;
+                var xpos = self.registers[(self.current_opcode & 0x0F00) >> 8];
+                var ypos = self.registers[y];
 
-                var y: usize = 0;
-                while (y < height) : (y += 1) {
-                    var spr = self.memory[self.index + y];
+                const height = n0;
 
-                    var x: usize = 0;
-                    while (x < 8) : (x += 1) {
+                var row: usize = 0;
+                while (row < height) : (row += 1) {
+                    var spr = self.memory[self.index + row];
+
+                    var col: usize = 0;
+                    while (col < 8) : (col += 1) {
                         const v: u8 = 0x80;
-                        if ((spr & (v >> @intCast(u3, x))) != 0) {
-                            var tX = (registerX + x) % 64;
-                            var tY = (registerY + y) % 32;
+                        if ((spr & (v >> @intCast(u3, col))) != 0) {
+                            var tX = (xpos + col) % 64;
+                            var tY = (ypos + row) % 32;
 
                             var idx = tX + tY * 64;
 
@@ -291,8 +284,7 @@ pub fn cycle(self: *Self) !void {
             }, // Draw
 
             0xE => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-                var m = self.current_opcode & 0x00FF;
+                const m = b0;
 
                 if (m == 0x9E) {
                     if (self.keys[self.registers[x]] == 1) {
@@ -307,49 +299,53 @@ pub fn cycle(self: *Self) !void {
             }, // Misc
 
             0xF => {
-                var x = (self.current_opcode & 0x0F00) >> 8;
-                var m = self.current_opcode & 0x00FF;
+                switch (b0) {
+                    0x07 => self.registers[x] = self.delay_timer,
 
-                if (m == 0x07) {
-                    self.registers[x] = self.delay_timer;
-                } else if (m == 0x0A) {
-                    var key_pressed = false;
+                    0x0A => {
+                        var key_pressed = false;
 
-                    var i: usize = 0;
-                    while (i < 16) : (i += 1) {
-                        if (self.keys[i] != 0) {
-                            self.registers[x] = @truncate(u8, i);
-                            key_pressed = true;
+                        var i: usize = 0;
+                        while (i < 16) : (i += 1) {
+                            if (self.keys[i] != 0) {
+                                self.registers[x] = @truncate(u8, i);
+                                key_pressed = true;
+                            }
                         }
-                    }
 
-                    if (!key_pressed)
-                        return;
-                } else if (m == 0x15) {
-                    self.delay_timer = self.registers[x];
-                } else if (m == 0x18) {
-                    self.sound_timer = self.registers[x];
-                } else if (m == 0x1E) {
-                    self.registers[0xF] = if (self.index + self.registers[x] > 0xFFF) 1 else 0;
-                    self.index += self.registers[x];
-                } else if (m == 0x29) {
-                    self.index = self.registers[x] * 0x5;
-                } else if (m == 0x33) {
-                    self.memory[self.index] = self.registers[x] / 100;
-                    self.memory[self.index + 1] = (self.registers[x] / 10) % 10;
-                    self.memory[self.index + 2] = self.registers[x] % 10;
-                } else if (m == 0x55) {
-                    var i: usize = 0;
-                    while (i <= x) : (i += 1) {
-                        self.memory[self.index + i] = self.registers[i];
-                    }
-                } else if (m == 0x65) {
-                    var i: usize = 0;
-                    while (i <= x) : (i += 1) {
-                        self.registers[i] = self.memory[self.index + i];
-                    }
+                        if (!key_pressed)
+                            return;
+                    },
+                    0x15 => self.delay_timer = self.registers[x],
+                    0x18 => self.sound_timer = self.registers[x],
+                    0x1E => {
+                        self.registers[0xF] = if (self.index + self.registers[x] > 0xFFF) 1 else 0;
+                        self.index += self.registers[x];
+                    },
+                    0x29 => self.index = self.registers[x] * 0x5,
+
+                    0x33 => {
+                        self.memory[self.index] = self.registers[x] / 100;
+                        self.memory[self.index + 1] = (self.registers[x] / 10) % 10;
+                        self.memory[self.index + 2] = self.registers[x] % 10;
+                    },
+                    0x55 => {
+                        var i: usize = 0;
+                        while (i <= x) : (i += 1) {
+                            self.memory[self.index + i] = self.registers[i];
+                        }
+                    },
+                    0x65 => {
+                        var i: usize = 0;
+                        while (i <= x) : (i += 1) {
+                            self.registers[i] = self.memory[self.index + i];
+                        }
+                    },
+                    else => {
+                        std.debug.print("CURRENT OP: {x}\n", .{self.current_opcode});
+                        @panic("Unknown instruction!");
+                    },
                 }
-
                 self.increment_pc();
             }, // MISC
 
@@ -369,4 +365,3 @@ pub fn update_timers(self: *Self) !void {
         self.sound_timer -= 1;
     }
 }
-
